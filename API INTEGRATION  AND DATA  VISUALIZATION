@@ -1,0 +1,144 @@
+import requests
+import matplotlib.pyplot as plt
+import seaborn as sns
+from datetime import datetime
+import json
+import os
+import sys
+import time
+from typing import Tuple, List
+
+# -------------- CONFIGURATION -------------------
+CONFIG_FILE = "config.json"
+
+def load_config() -> dict:
+    if not os.path.exists(CONFIG_FILE):
+        default_config = {
+            "api_key": "your_openweathermap_api_key",
+            "city": "London",
+            "units": "metric"
+        }
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(default_config, f, indent=4)
+        print(f"Created default config. Please update {CONFIG_FILE} with your API key.")
+        sys.exit(1)
+    with open(CONFIG_FILE, 'r') as f:
+        return json.load(f)
+
+# -------------- API FETCHING ---------------------
+def fetch_weather_data(city: str, api_key: str, units: str = 'metric') -> dict:
+    url = f"http://api.openweathermap.org/data/2.5/forecast?q={city}&appid={api_key}&units={units}"
+    print(f"Requesting weather data for {city}...")
+    response = requests.get(url)
+    if response.status_code != 200:
+        print(f"Failed to fetch data: {response.status_code}")
+        sys.exit(1)
+    return response.json()
+
+# -------------- PARSING ---------------------
+def parse_forecast(data: dict) -> Tuple[List[datetime], List[float], List[int], List[str]]:
+    times, temps, humidities, descriptions = [], [], [], []
+    for entry in data.get("list", []):
+        dt = datetime.strptime(entry['dt_txt'], "%Y-%m-%d %H:%M:%S")
+        temp = entry['main']['temp']
+        humidity = entry['main']['humidity']
+        desc = entry['weather'][0]['description']
+        times.append(dt)
+        temps.append(temp)
+        humidities.append(humidity)
+        descriptions.append(desc)
+    return times, temps, humidities, descriptions
+
+# -------------- VISUALIZATION ---------------------
+def create_temperature_plot(times, temps, city, save=False):
+    plt.figure(figsize=(12, 6))
+    plt.plot(times, temps, marker='o', linestyle='-', color='crimson')
+    plt.title(f"Temperature Forecast in {city}", fontsize=14)
+    plt.xlabel("Time")
+    plt.ylabel("Temperature (°C)")
+    plt.xticks(rotation=45)
+    plt.grid(True)
+    plt.tight_layout()
+    if save:
+        plt.savefig("temperature_plot.png")
+    plt.show()
+
+def create_humidity_plot(times, humidities, city, save=False):
+    plt.figure(figsize=(12, 6))
+    plt.bar(times, humidities, color='skyblue')
+    plt.title(f"Humidity Forecast in {city}", fontsize=14)
+    plt.xlabel("Time")
+    plt.ylabel("Humidity (%)")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    if save:
+        plt.savefig("humidity_plot.png")
+    plt.show()
+
+def create_description_scatter(times, temps, descriptions, save=False):
+    plt.figure(figsize=(12, 6))
+    scatter = plt.scatter(times, temps, c=range(len(temps)), cmap='viridis', label=descriptions)
+    plt.title("Temperature Scatter by Weather Description", fontsize=14)
+    plt.xlabel("Time")
+    plt.ylabel("Temperature (°C)")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    if save:
+        plt.savefig("scatter_plot.png")
+    plt.show()
+
+# -------------- DASHBOARD MENU ---------------------
+def dashboard_menu():
+    print("\n=== WEATHER DASHBOARD MENU ===")
+    print("1. Show Temperature Forecast")
+    print("2. Show Humidity Forecast")
+    print("3. Show Scatter Plot (Temp vs Time)")
+    print("4. Save All Plots")
+    print("5. Exit")
+
+# -------------- SAVE DATA TO FILE ------------------
+def save_forecast_to_file(times, temps, humidities, descriptions, filename="forecast_data.txt"):
+    with open(filename, 'w') as f:
+        for i in range(len(times)):
+            line = f"{times[i]}, Temp: {temps[i]}°C, Humidity: {humidities[i]}%, Description: {descriptions[i]}"
+            f.write(line + "\n")
+    print(f"Saved forecast to {filename}")
+
+# -------------- MAIN ---------------------
+def main():
+    config = load_config()
+    city = config['city']
+    api_key = config['api_key']
+    units = config['units']
+
+    try:
+        weather_data = fetch_weather_data(city, api_key, units)
+        times, temps, humidities, descriptions = parse_forecast(weather_data)
+        save_forecast_to_file(times, temps, humidities, descriptions)
+
+        while True:
+            dashboard_menu()
+            choice = input("Enter your choice: ").strip()
+            if choice == '1':
+                create_temperature_plot(times, temps, city)
+            elif choice == '2':
+                create_humidity_plot(times, humidities, city)
+            elif choice == '3':
+                create_description_scatter(times, temps, descriptions)
+            elif choice == '4':
+                create_temperature_plot(times, temps, city, save=True)
+                create_humidity_plot(times, humidities, city, save=True)
+                create_description_scatter(times, temps, descriptions, save=True)
+                print("All plots saved to disk.")
+            elif choice == '5':
+                print("Exiting dashboard.")
+                break
+            else:
+                print("Invalid choice. Try again.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        sys.exit(1)
+
+# -------------- RUN APP ---------------------
+if __name__ == "__main__":
+    main()
